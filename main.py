@@ -40,7 +40,7 @@ ACCOUNT_PW  = "6A6822FB908387D500640BD4B06C1B9C2E36D339348A2A7D2296C3133801C051"
 # توكن بوت التلغرام الخاص بهذا البوت (يمكنك استخدام نفس التوكن أو توكن جديد)
 BOT_TOKEN = "8248104861:AAEmzo4Bx2Ss6uiT3zma4CbCUnU717tRIEw"
 ADMIN_TELEGRAM_ID = 6848455321
-BASE_WEBHOOK_URL = "https://botemot-2.onrender.com"   # غيّره حسب رابطك
+BASE_WEBHOOK_URL = "https://test-emote-y9hd.onrender.com"   # غيّره حسب رابطك
 
 # قنوات الاشتراك (اختياري، يمكن تعطيلها)
 REQUIRED_CHANNEL = "@Ziko_Tim"
