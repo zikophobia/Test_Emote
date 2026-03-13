@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: zakaria-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 8248104861:AAEmzo4Bx2Ss6uiT3zma4CbCUnU717tRIEw
+      - key: BASE_WEBHOOK_URL
+        value: https://your-app-name.onrender.com  # استبدل باسم تطبيقك
+      - key: ADMIN_TELEGRAM_ID
+        value: 6848455321
