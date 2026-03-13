@@ -38,7 +38,7 @@ BYPASS_TOKEN = "your_bypass_token_here"
 # ضع توكن البوت هنا مباشرة
 BOT_TOKEN = "8248104861:AAEmzo4Bx2Ss6uiT3zma4CbCUnU717tRIEw"
 ADMIN_TELEGRAM_ID = 6848455321
-BASE_WEBHOOK_URL = "https://botemot-2.onrender.com"   # <- تم التعديل حسب رابطك الجديد
+BASE_WEBHOOK_URL = "https://test-emote-y9hd.onrender.com"   # <- تم التعديل حسب رابطك الجديد
 
 # قنوات الاشتراك الإجباري
 REQUIRED_CHANNEL = "@Ziko_Tim"
