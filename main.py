@@ -981,7 +981,7 @@ async def lag_team_loop(team_code, key, iv, region):
 # ------------------- الدالة الرئيسية -------------------
 async def MaiiiinE():
     global key, iv, region
-    Uid, Pw = '4378068850', '8C583277F6A0221993BAC8FBBD712BC25B171A445A34FB1DD0966609CB74729D'
+    Uid, Pw = '4357299491', '6A6822FB908387D500640BD4B06C1B9C2E36D339348A2A7D2296C3133801C051'
 
     open_id, access_token = await GeNeRaTeAccEss(Uid, Pw)
     if not open_id or not access_token:
