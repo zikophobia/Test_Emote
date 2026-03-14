@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 # ============================
 # بوت منفصل لأمر /ms
-# الإصدار: 1.0
+# الإصدار: 2.0 (مع إصلاحات الاتصال)
 # ============================
 
 import requests, os, sys, jwt, pickle, json, binascii, time, urllib3, base64, datetime, re, socket, threading, ssl, pytz, aiohttp
 from protobuf_decoder.protobuf_decoder import Parser
 from xC4 import *
-from xC4 import online_writer, whisper_writer
 from xHeaders import *
 from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -31,27 +30,26 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 import logging
 
+# استيراد المتغيرات العامة من xC4.py
+from xC4 import online_writer, whisper_writer
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # ------------------- إعدادات ثابتة (غيّرها حسب حسابك) -------------------
-# حساب Garena الذي سيستخدمه هذا البوت (يجب أن يكون مختلفاً عن البوت الأساسي)
-ACCOUNT_UID = "4357299491"          # استبدل بمعرف حسابك الجديد
-ACCOUNT_PW  = "6A6822FB908387D500640BD4B06C1B9C2E36D339348A2A7D2296C3133801C051"  # كلمة المرور
+# حساب Garena الذي سيستخدمه هذا البوت (جديد)
+ACCOUNT_UID = "4357299491"
+ACCOUNT_PW  = "6A6822FB908387D500640BD4B06C1B9C2E36D339348A2A7D2296C3133801C051"
 
-# توكن بوت التلغرام الخاص بهذا البوت (يمكنك استخدام نفس التوكن أو توكن جديد)
+# توكن بوت التلغرام الجديد
 BOT_TOKEN = "8248104861:AAEmzo4Bx2Ss6uiT3zma4CbCUnU717tRIEw"
 ADMIN_TELEGRAM_ID = 6848455321
-BASE_WEBHOOK_URL = "https://test-emote-y9hd.onrender.com"   # غيّره حسب رابطك
+BASE_WEBHOOK_URL = "https://your-app.onrender.com"   # غيّره حسب رابطك
 
 # قنوات الاشتراك (اختياري، يمكن تعطيلها)
 REQUIRED_CHANNEL = "@Ziko_Tim"
 REQUIRED_GROUP = "@MTX_SX_CHAT_TEAM"
 
 # ------------------- المتغيرات العامة -------------------
-online_writer = None
-whisper_writer = None
-insquad = None
-joining_team = False
 telegram_bot_running = False
 telegram_bot = None
 telegram_dp = None
@@ -157,7 +155,7 @@ async def telegram_startup():
     except asyncio.CancelledError:
         await runner.cleanup()
 
-# ------------------- معالجات الأوامر (فقط /start, /help, /ms, /join, /exit) -------------------
+# ------------------- معالجات الأوامر (فقط /ms, /join, /exit) -------------------
 async def register_handlers(dp: Dispatcher):
 
     @dp.callback_query(lambda c: c.data == 'check_sub')
@@ -169,7 +167,7 @@ async def register_handlers(dp: Dispatcher):
         else:
             await callback_query.answer("❌ لم تشترك بعد! اشترك ثم حاول مرة أخرى.", show_alert=True)
 
-    @dp.message(Command("start"))
+    @dp.message(Command("start", "help"))
     async def start_cmd(message: Message):
         user_id = message.from_user.id
         chat_type = message.chat.type
@@ -222,10 +220,6 @@ async def register_handlers(dp: Dispatcher):
 """
         await message.reply(commands_text, parse_mode="HTML")
 
-    @dp.message(Command("help"))
-    async def help_cmd(message: Message):
-        await start_cmd(message)
-
     # أمر /ms
     @dp.message(Command("ms"))
     async def ms_command(message: Message):
@@ -259,6 +253,13 @@ async def register_handlers(dp: Dispatcher):
         team_code = parts[1]
         status_msg = await message.reply(f"🔄 جاري الانضمام إلى {team_code}...")
         try:
+            # انتظار الاتصالات
+            for _ in range(10):
+                if online_writer is not None and whisper_writer is not None:
+                    break
+                await asyncio.sleep(0.5)
+            else:
+                raise Exception("الاتصالات غير جاهزة")
             join_packet = await GenJoinSquadsPacket(team_code, key, iv)
             await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_packet)
             await telegram_bot.edit_message_text(f"✅ تم إرسال طلب الانضمام إلى {team_code}.", message.chat.id, status_msg.message_id)
@@ -280,17 +281,15 @@ async def register_handlers(dp: Dispatcher):
 # ------------------- دالة معالجة /ms -------------------
 async def process_ms_command(team_code: str, user_message: str, key, iv, region, chat_id: int, status_msg_id: int, user_id: int):
     global current_chat_id
-    from xC4 import online_writer, whisper_writer  # تأكد من الاستيراد (يمكن وضعه في الأعلى)
-
     try:
-        # انتظار جاهزية الاتصالات
-        for attempt in range(10):
+        # انتظار جاهزية الاتصالات (حتى 10 ثوانٍ)
+        for attempt in range(20):  # 20 * 0.5 = 10 ثوانٍ
             if online_writer is not None and whisper_writer is not None:
+                print(f"✅ الاتصالات جاهزة بعد {attempt*0.5} ثانية")
                 break
-            print(f"⏳ انتظار الاتصالات... ({attempt+1}/10)")
             await asyncio.sleep(0.5)
         else:
-            raise Exception("الاتصالات غير جاهزة")
+            raise Exception("الاتصالات لم تكن جاهزة بعد 10 ثوانٍ")
 
         # إعادة تعيين current_chat_id
         current_chat_id = None
@@ -298,97 +297,42 @@ async def process_ms_command(team_code: str, user_message: str, key, iv, region,
         # انضمام
         join_packet = await GenJoinSquadsPacket(team_code, key, iv)
         await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_packet)
+        print(f"📤 تم إرسال طلب الانضمام إلى {team_code}")
 
         # انتظار chat_id
         waited = 0
-        while waited < 10 and current_chat_id is None:
+        while waited < 15 and current_chat_id is None:
             await asyncio.sleep(0.5)
             waited += 0.5
+            print(f"⏳ انتظار chat_id... {waited} ثانية")
 
         if current_chat_id is None:
             raise Exception("لم يتم الحصول على معرف الدردشة بعد الانضمام")
+
+        print(f"✅ تم الحصول على chat_id: {current_chat_id}")
 
         # إرسال الرسالة 4 مرات
         for i in range(4):
             color = get_random_color()
             colored_message = f"[B][C]{color} {user_message}"
-            await safe_send_message(0, colored_message, user_id, current_chat_id, key, iv)
+            success = await safe_send_message(0, colored_message, user_id, current_chat_id, key, iv)
+            if not success:
+                print(f"⚠️ فشل إرسال الرسالة في المحاولة {i+1}")
+            else:
+                print(f"✅ تم إرسال الرسالة {i+1}")
             await asyncio.sleep(0.5)
 
         # مغادرة
         exit_packet = await ExiT(None, key, iv)
         await SEndPacKeT(whisper_writer, online_writer, 'OnLine', exit_packet)
+        print("🚪 تم مغادرة الفريق")
 
         current_chat_id = None
         await telegram_bot.edit_message_text(f"✅ تم إرسال الرسالة إلى {team_code} (4 مرات).", chat_id, status_msg_id)
 
     except Exception as e:
+        print(f"❌ خطأ في process_ms_command: {str(e)}")
         await telegram_bot.edit_message_text(f"❌ خطأ: {str(e)}", chat_id, status_msg_id)
-
-# ------------------- دوال الاتصال TCP (معدلة لالتقاط chat_id) -------------------
-async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
-    global online_writer, whisper_writer, insquad, joining_team, region, current_chat_id
-    while True:
-        try:
-            reader, writer = await asyncio.open_connection(ip, int(port))
-            online_writer = writer
-            writer.write(bytes.fromhex(AutHToKen))
-            await writer.drain()
-            print("تم إرسال رمز المصادقة. دخول في حلقة القراءة...")
-            while True:
-                data = await reader.read(9999)
-                if not data:
-                    print("تم إغلاق الاتصال.")
-                    break
-                # هنا يمكن إضافة معالجة إذا لزم الأمر
-        except Exception as e:
-            print(f"خطأ في TcPOnLine: {e}")
-        finally:
-            if online_writer:
-                online_writer.close()
-                await online_writer.wait_closed()
-                online_writer = None
-            await asyncio.sleep(reconnect_delay)
-
-async def TcPChaT(ip, port, AutHToKen, key, iv, LoGinDaTaUncRypTinG, ready_event, region, reconnect_delay=0.5):
-    global whisper_writer, online_writer, current_chat_id
-    while True:
-        try:
-            reader, writer = await asyncio.open_connection(ip, int(port))
-            whisper_writer = writer
-            writer.write(bytes.fromhex(AutHToKen))
-            await writer.drain()
-            ready_event.set()
-            if LoGinDaTaUncRypTinG.Clan_ID:
-                clan_id = LoGinDaTaUncRypTinG.Clan_ID
-                clan_compiled_data = LoGinDaTaUncRypTinG.Clan_Compiled_Data
-                print(f"البوت في نقابة {clan_id}")
-                pK = await AuthClan(clan_id, clan_compiled_data, key, iv)
-                if whisper_writer:
-                    whisper_writer.write(pK)
-                    await whisper_writer.drain()
-            while True:
-                data = await reader.read(9999)
-                if not data:
-                    break
-                # محاولة فك تشفير الرسالة واستخراج chat_id
-                if data.hex().startswith("120000"):
-                    try:
-                        response = await DecodeWhisperMessage(data.hex()[10:])
-                        if response:
-                            # تحديث current_chat_id بأي chat_id نستقبله
-                            current_chat_id = response.Data.Chat_ID
-                            print(f"🆔 تم تحديث current_chat_id إلى: {current_chat_id}")
-                    except:
-                        pass
-        except Exception as e:
-            print(f"خطأ في TcPChaT: {e}")
-        finally:
-            if whisper_writer:
-                whisper_writer.close()
-                await whisper_writer.wait_closed()
-                whisper_writer = None
-            await asyncio.sleep(reconnect_delay)
 
 # ------------------- الدالة الرئيسية -------------------
 async def MaiiiinE():

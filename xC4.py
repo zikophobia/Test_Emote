@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # By AbdeeLkarim BesTo
+# معدل للتوافق مع بوت ms
 
 import requests, json, binascii, time, urllib3, base64, datetime, re, socket, threading, random, os, asyncio, ssl
 from protobuf_decoder.protobuf_decoder import Parser
@@ -8,11 +9,16 @@ from Crypto.Util.Padding import pad, unpad
 from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
 from Pb2 import MajoRLoGinrEq_pb2, MajoRLoGinrEs_pb2, PorTs_pb2, DEcwHisPErMsG_pb2, sQ_pb2
-import aiohttp  # هذا السطر هو المهم لإزالة الخطأ
-# متغيرات عامة للاتصالات
+import aiohttp
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ------------------- المتغيرات العامة للاتصالات -------------------
 online_writer = None
 whisper_writer = None
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+insquad = None
+joining_team = False
+lag_running = False
 
 # المفاتيح الثابتة
 Key = bytes([89, 103, 38, 116, 99, 37, 68, 69, 117, 104, 54, 37, 90, 99, 94, 56])
@@ -335,7 +341,7 @@ async def decode_team_packet(hex_packet):
     return proto
 
 # -------------------------------------------------------------------
-# دوال إرسال الحزم عبر TCP (مهمة للاتصال باللعبة)
+# دوال إرسال الحزم عبر TCP
 # -------------------------------------------------------------------
 async def SEndPacKeT(OnLinE, ChaT, TypE, PacKeT):
     if TypE == 'ChaT' and ChaT:
@@ -370,7 +376,7 @@ async def TcPOnLine(ip, port, key, iv, AutHToKen, reconnect_delay=0.5):
             await asyncio.sleep(reconnect_delay)
 
 async def TcPChaT(ip, port, AutHToKen, key, iv, LoGinDaTaUncRypTinG, ready_event, region, reconnect_delay=0.5):
-    global whisper_writer, online_writer
+    global whisper_writer, online_writer, current_chat_id  # سنضيف current_chat_id إذا أردنا تحديثه
     while True:
         try:
             reader, writer = await asyncio.open_connection(ip, int(port))
@@ -390,7 +396,16 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, LoGinDaTaUncRypTinG, ready_event
                 data = await reader.read(9999)
                 if not data:
                     break
-                # معالجة الرسائل الواردة إذا لزم الأمر
+                # محاولة فك تشفير الرسالة واستخراج chat_id (اختياري)
+                if data.hex().startswith("120000"):
+                    try:
+                        response = await DecodeWhisperMessage(data.hex()[10:])
+                        if response:
+                            # يمكن تخزين chat_id في متغير عام إذا أردنا
+                            # current_chat_id = response.Data.Chat_ID
+                            pass
+                    except:
+                        pass
         except Exception as e:
             print(f"خطأ في TcPChaT: {e}")
         finally:
@@ -401,7 +416,7 @@ async def TcPChaT(ip, port, AutHToKen, key, iv, LoGinDaTaUncRypTinG, ready_event
             await asyncio.sleep(reconnect_delay)
 
 # -------------------------------------------------------------------
-# دوال بناء الحزم المختلفة (الموجودة أصلاً في ملفك)
+# دوال بناء الحزم المختلفة
 # -------------------------------------------------------------------
 async def GeneRaTePk(Pk, N, K, V):
     PkEnc = await EnC_PacKeT(Pk, K, V)
@@ -479,6 +494,7 @@ async def lag_team_loop(team_code, key, iv, region):
         except Exception as e:
             print(f"خطأ في حلقة التأخير: {e}")
             await asyncio.sleep(0.1)
+
 async def xSEndMsg(Msg , Tp , Tp2 , id , K , V):
     fields = {1: id , 2: Tp2 , 3: Tp, 4: Msg, 5: 1735129800, 7: 2, 9: {1: "xBesTo - C4", 2: int(await xBunnEr()), 3: 901048020, 4: 330, 5: 1001000001, 8: "xBesTo - C4", 10: 1, 11: 1, 13: {1: 2}, 14: {1: 12484827014, 2: 8, 3: "\u0010\u0015\b\n\u000b\u0013\f\u000f\u0011\u0004\u0007\u0002\u0003\r\u000e\u0012\u0001\u0005\u0006"}, 12: 0}, 10: "en", 13: {3: 1}}
     Pk = (await CrEaTe_ProTo(fields)).hex()
@@ -490,8 +506,3 @@ async def xSEndMsgsQ(Msg , id , K , V):
     Pk = (await CrEaTe_ProTo(fields)).hex()
     Pk = "080112" + await EnC_Uid(len(Pk) // 2, Tp='Uid') + Pk
     return await GeneRaTePk(Pk, '1201', K, V)
-# -------------------------------------------------------------------
-# باقي الدوال الأخرى (موجودة في ملفك الأصلي)
-# -------------------------------------------------------------------
-# يمكنك إضافة بقية الدوال مثل redzed, RejectMSGtaxt, xSEndMsg, ... إلخ
-# لكن ما سبق يكفي لتشغيل البوت.
