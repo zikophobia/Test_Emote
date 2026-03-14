@@ -8,6 +8,7 @@
 import requests, os, sys, jwt, pickle, json, binascii, time, urllib3, base64, datetime, re, socket, threading, ssl, pytz, aiohttp
 from protobuf_decoder.protobuf_decoder import Parser
 from xC4 import *
+from xC4 import online_writer, whisper_writer
 from xHeaders import *
 from datetime import datetime
 from google.protobuf.timestamp_pb2 import Timestamp
