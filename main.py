@@ -280,15 +280,26 @@ async def register_handlers(dp: Dispatcher):
 # ------------------- دالة معالجة /ms -------------------
 async def process_ms_command(team_code: str, user_message: str, key, iv, region, chat_id: int, status_msg_id: int, user_id: int):
     global current_chat_id
+    from xC4 import online_writer, whisper_writer  # تأكد من الاستيراد (يمكن وضعه في الأعلى)
+
     try:
-        # إعادة تعيين current_chat_id قبل الانضمام
+        # انتظار جاهزية الاتصالات
+        for attempt in range(10):
+            if online_writer is not None and whisper_writer is not None:
+                break
+            print(f"⏳ انتظار الاتصالات... ({attempt+1}/10)")
+            await asyncio.sleep(0.5)
+        else:
+            raise Exception("الاتصالات غير جاهزة")
+
+        # إعادة تعيين current_chat_id
         current_chat_id = None
 
         # انضمام
         join_packet = await GenJoinSquadsPacket(team_code, key, iv)
         await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_packet)
 
-        # انتظار chat_id لمدة 10 ثوانٍ
+        # انتظار chat_id
         waited = 0
         while waited < 10 and current_chat_id is None:
             await asyncio.sleep(0.5)
@@ -308,10 +319,9 @@ async def process_ms_command(team_code: str, user_message: str, key, iv, region,
         exit_packet = await ExiT(None, key, iv)
         await SEndPacKeT(whisper_writer, online_writer, 'OnLine', exit_packet)
 
-        # إعادة تعيين المتغير (اختياري)
         current_chat_id = None
-
         await telegram_bot.edit_message_text(f"✅ تم إرسال الرسالة إلى {team_code} (4 مرات).", chat_id, status_msg_id)
+
     except Exception as e:
         await telegram_bot.edit_message_text(f"❌ خطأ: {str(e)}", chat_id, status_msg_id)
 
