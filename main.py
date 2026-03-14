@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ============================
-# بوت منفصل لأمر /ms
-# الإصدار: 2.0 (مع إصلاحات الاتصال)
-# ============================
+# main.py - بوت تيليغرام لأمر /ms مع دعم الحصول على معلومات الفريق
 
 import requests, os, sys, jwt, pickle, json, binascii, time, urllib3, base64, datetime, re, socket, threading, ssl, pytz, aiohttp
 from protobuf_decoder.protobuf_decoder import Parser
@@ -30,13 +27,13 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from aiohttp import web
 import logging
 
-# استيراد المتغيرات العامة من xC4.py
-from xC4 import online_writer, whisper_writer
+# استيراد الدوال الجديدة من xC4.py
+from xC4 import GetSquadInfo, init_squad_info_queue, squad_info_queue, squad_info_event, online_writer, whisper_writer, GeTSQDaTa
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ------------------- إعدادات ثابتة (غيّرها حسب حسابك) -------------------
-# حساب Garena الذي سيستخدمه هذا البوت (جديد)
+# ------------------- الإعدادات الثابتة -------------------
+# حساب Garena الذي سيستخدمه البوت (استخدم الحساب الجديد)
 ACCOUNT_UID = "4357299491"
 ACCOUNT_PW  = "6A6822FB908387D500640BD4B06C1B9C2E36D339348A2A7D2296C3133801C051"
 
@@ -45,7 +42,7 @@ BOT_TOKEN = "8248104861:AAEmzo4Bx2Ss6uiT3zma4CbCUnU717tRIEw"
 ADMIN_TELEGRAM_ID = 6848455321
 BASE_WEBHOOK_URL = "https://test-emote-y9hd.onrender.com"   # غيّره حسب رابطك
 
-# قنوات الاشتراك (اختياري، يمكن تعطيلها)
+# قنوات الاشتراك (اختياري)
 REQUIRED_CHANNEL = "@Ziko_Tim"
 REQUIRED_GROUP = "@MTX_SX_CHAT_TEAM"
 
@@ -58,9 +55,6 @@ telegram_dp = None
 key = None
 iv = None
 region = None
-
-# --- المتغير الخاص بتخزين آخر chat_id تم استقباله ---
-current_chat_id = None
 
 # ------------------- دوال مساعدة -------------------
 def get_random_color():
@@ -81,6 +75,7 @@ async def safe_send_message(chat_type, message, target_uid, chat_id, key, iv, ma
     """إرسال رسالة بأمان مع إعادة المحاولة"""
     for attempt in range(max_retries):
         try:
+            # نستخدم xSEndMsgsQ مع chat_id (هنا chat_id هو OwNer_UiD)
             msg_packet = await xSEndMsgsQ(message, chat_id, key, iv)
             await SEndPacKeT(whisper_writer, online_writer, 'ChaT', msg_packet)
             return True
@@ -97,7 +92,7 @@ def get_subscription_keyboard():
     ])
     return keyboard
 
-# ------------------- دوال التحقق من الاشتراك (اختياري) -------------------
+# ------------------- دوال التحقق من الاشتراك -------------------
 async def check_subscription(user_id: int) -> bool:
     try:
         channel_member = await telegram_bot.get_chat_member(REQUIRED_CHANNEL, user_id)
@@ -155,7 +150,7 @@ async def telegram_startup():
     except asyncio.CancelledError:
         await runner.cleanup()
 
-# ------------------- معالجات الأوامر (فقط /ms, /join, /exit) -------------------
+# ------------------- معالجات الأوامر -------------------
 async def register_handlers(dp: Dispatcher):
 
     @dp.callback_query(lambda c: c.data == 'check_sub')
@@ -254,15 +249,19 @@ async def register_handlers(dp: Dispatcher):
         status_msg = await message.reply(f"🔄 جاري الانضمام إلى {team_code}...")
         try:
             # انتظار الاتصالات
-            for _ in range(10):
+            for _ in range(20):
                 if online_writer is not None and whisper_writer is not None:
                     break
                 await asyncio.sleep(0.5)
             else:
                 raise Exception("الاتصالات غير جاهزة")
-            join_packet = await GenJoinSquadsPacket(team_code, key, iv)
-            await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_packet)
-            await telegram_bot.edit_message_text(f"✅ تم إرسال طلب الانضمام إلى {team_code}.", message.chat.id, status_msg.message_id)
+            
+            # استخدام GetSquadInfo للحصول على معلومات الفريق
+            owner_uid, chat_code = await GetSquadInfo(team_code, key, iv, timeout=15)
+            if owner_uid and chat_code:
+                await telegram_bot.edit_message_text(f"✅ تم الانضمام بنجاح.\nOwner: {owner_uid}\nChat Code: {chat_code}", message.chat.id, status_msg.message_id)
+            else:
+                await telegram_bot.edit_message_text(f"❌ فشل الحصول على معلومات الفريق.", message.chat.id, status_msg.message_id)
         except Exception as e:
             await telegram_bot.edit_message_text(f"❌ خطأ: {str(e)}", message.chat.id, status_msg.message_id)
 
@@ -280,56 +279,49 @@ async def register_handlers(dp: Dispatcher):
 
 # ------------------- دالة معالجة /ms -------------------
 async def process_ms_command(team_code: str, user_message: str, key, iv, region, chat_id: int, status_msg_id: int, user_id: int):
-    global current_chat_id
     try:
-        # انتظار جاهزية الاتصالات (حتى 10 ثوانٍ)
-        for attempt in range(20):  # 20 * 0.5 = 10 ثوانٍ
+        # انتظار جاهزية الاتصالات
+        for attempt in range(20):
             if online_writer is not None and whisper_writer is not None:
                 print(f"✅ الاتصالات جاهزة بعد {attempt*0.5} ثانية")
                 break
             await asyncio.sleep(0.5)
         else:
             raise Exception("الاتصالات لم تكن جاهزة بعد 10 ثوانٍ")
-
-        # إعادة تعيين current_chat_id
-        current_chat_id = None
-
-        # انضمام
-        join_packet = await GenJoinSquadsPacket(team_code, key, iv)
-        await SEndPacKeT(whisper_writer, online_writer, 'OnLine', join_packet)
-        print(f"📤 تم إرسال طلب الانضمام إلى {team_code}")
-
-        # انتظار chat_id
-        waited = 0
-        while waited < 15 and current_chat_id is None:
-            await asyncio.sleep(0.5)
-            waited += 0.5
-            print(f"⏳ انتظار chat_id... {waited} ثانية")
-
-        if current_chat_id is None:
-            raise Exception("لم يتم الحصول على معرف الدردشة بعد الانضمام")
-
-        print(f"✅ تم الحصول على chat_id: {current_chat_id}")
-
+        
+        # الحصول على معلومات الفريق
+        owner_uid, chat_code = await GetSquadInfo(team_code, key, iv, timeout=15)
+        
+        if not owner_uid or not chat_code:
+            raise Exception("فشل الحصول على معلومات الفريق")
+        
+        print(f"📋 بيانات الفريق - Owner: {owner_uid}, Chat Code: {chat_code}")
+        
+        # فتح المحادثة باستخدام AutH_Chat
+        auth_packet = await AutH_Chat(3, int(owner_uid), chat_code, key, iv)
+        await SEndPacKeT(whisper_writer, online_writer, 'ChaT', auth_packet)
+        print("🔓 تم فتح المحادثة")
+        await asyncio.sleep(1)
+        
         # إرسال الرسالة 4 مرات
         for i in range(4):
             color = get_random_color()
             colored_message = f"[B][C]{color} {user_message}"
-            success = await safe_send_message(0, colored_message, user_id, current_chat_id, key, iv)
+            # استخدم owner_uid كـ chat_id في xSEndMsgsQ
+            success = await safe_send_message(0, colored_message, user_id, int(owner_uid), key, iv)
             if not success:
                 print(f"⚠️ فشل إرسال الرسالة في المحاولة {i+1}")
             else:
                 print(f"✅ تم إرسال الرسالة {i+1}")
             await asyncio.sleep(0.5)
-
-        # مغادرة
+        
+        # مغادرة الفريق (اختياري)
         exit_packet = await ExiT(None, key, iv)
         await SEndPacKeT(whisper_writer, online_writer, 'OnLine', exit_packet)
         print("🚪 تم مغادرة الفريق")
-
-        current_chat_id = None
+        
         await telegram_bot.edit_message_text(f"✅ تم إرسال الرسالة إلى {team_code} (4 مرات).", chat_id, status_msg_id)
-
+        
     except Exception as e:
         print(f"❌ خطأ في process_ms_command: {str(e)}")
         await telegram_bot.edit_message_text(f"❌ خطأ: {str(e)}", chat_id, status_msg_id)
@@ -337,6 +329,9 @@ async def process_ms_command(team_code: str, user_message: str, key, iv, region,
 # ------------------- الدالة الرئيسية -------------------
 async def MaiiiinE():
     global key, iv, region
+    # تهيئة قائمة انتظار معلومات الفريق
+    init_squad_info_queue()
+
     open_id, access_token = await GeNeRaTeAccEss(ACCOUNT_UID, ACCOUNT_PW)
     if not open_id or not access_token:
         print("❌ فشل تسجيل الدخول بالحساب")
